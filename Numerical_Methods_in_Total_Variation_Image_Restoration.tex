@@ -1,0 +1,529 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage{amsfonts}
+\usepackage{iplouccfg}
+\usepackage{zhfontcfg}
+\usepackage{iplouclistings}
+\usepackage{amsmath}
+\usepackage{exscale}
+\usepackage{relsize}
+\usepackage{subfigure}
+
+\title{全变分图像复原的数值方法}
+\author{邱欣欣}
+\date{2014年8月21日}
+
+\begin{document}
+
+\maketitle
+
+\section{引言}
+基于全变分的图像复原模型最初由Rudin, Osher, and Fatemi(ROF)在\cite{Rudin:1992ro}中提出。此后，它成为图像复原领域最流行和有效的模型之一。现在，它不仅能处理基本的图像去噪问题，还广泛应用于其他图像复原问题，如去模糊，盲复原，和图像修补等，这得益于TV良好的边缘保持性能。此后，人们对于TV开展了进一步的研究：如何构建更多复杂的变体以更好的重建图像，设计更快的算法以求解最优化问题，以及发现更多TV的应用领域。本文主要介绍全变分模型的基本概念及相关的数值方法。
+
+\section{基于全变分的数学模型}
+
+\subsection{基本定义}
+在Rudin, Osher, and Fatemi 的工作\cite{Rudin:1992ro}中，一幅图像$u$的TV：$\Omega\rightarrow\mathbb{R}$被定义为
+\newcommand{\ud}{\mathrm{d}}
+\begin{displaymath}
+\int_{\Omega}|\nabla u| \ud x 
+\end{displaymath}
+
+其中$|\nabla u|=\sqrt{u_x^2+u_y^2}$，$\Omega\in \mathbb{R}^2$是一个有界的开集。
+
+\subsection{ROF模型}
+
+%一个常用的图像退化模型为：
+%\begin{displaymath}
+%f=k*u+\eta
+%\end{displaymath}
+%
+%其中$f$是观察到的图像，$k$是点扩散函数（point spread function），$u$是干净的图像，$\eta$是加性噪声（通常是高斯噪声），$*$代表卷积算子。
+
+ROF 模型处理的是下列的问题，给定一个噪声图像$f$：$\Omega\rightarrow\mathbb{R}$，我们的目的是得到干净的图像$u$。为了求解这个问题，Rudin, Osher 和 Fatemi 提出了下列的最小化问题：
+\begin{displaymath}
+\min \int_{\Omega}|\nabla u| \ud x
+\end{displaymath}
+\begin{displaymath}
+subject\quad to \quad  \int_{\Omega}u \ud x\ud y=\int_{\Omega}f \ud x\ud y\qquad  \int_{\Omega}\frac{1}{2}(u-f)^2 \ud x\ud y=\sigma^2,\quad \sigma>0
+\end{displaymath}
+
+但通常我们考虑的是更一般的形式
+\begin{eqnarray}
+\min_u \frac{1}{2}\int_{\Omega}(Ku-f)^2\ud x+\lambda\int_{\Omega}|\nabla u| 
+\end{eqnarray}
+
+在上式中，$f$ 是观察到的图像，$u$是去噪图像，$K$是模糊算子，当$K=I$时，上述问题转化成去噪问题。
+TV范数在平的区域内是不可微的，此时$|\nabla u|=0$，因此直接求解上述的最优化过程是困难的。由此人们提出了一系列的改进算法，如对偶/原始对偶方法，Bregman迭代方法，图割方法(graph cut methods)等。需要注意的是，这些方法用于不同形式的TV公式，不同的性质和目的，不同的普适性，因而不能简单的进行对比。
+
+\subsection{BV($\Omega$)}
+
+Bounded variation (BV) 空间是一个极小化ROF模型的理想的函数空间，因为
+BV提供解的正则化并且允许不连续性（边界）。许多其他空间例如Sobolev空间$W^{1,1}$不允许边界。在定义BV空间之前，我们声明TV的定义如下
+\begin{eqnarray*}
+\int_{\Omega}|\nabla u|=\sup\bigg{\{}\int_{\Omega}u\nabla\cdot p\ \ud x:p\in C_c^1(\Omega, \mathbb{R}^n),|p(x)|\leq 1\ \forall x\in \Omega\bigg{\}}
+\end{eqnarray*}
+
+其中$u\in L^1(\Omega)$，$\Omega\subseteq\mathbb{R}^n$是一个有界空集。因此BV空间定义为$\{u\in L^1(\Omega)|\int_{\Omega}|\nabla u|<\infty|\}$。
+现在BV空间函数相当于有界TV半范数的$L^1$函数。
+
+同时，我们得到下列的等式形式
+\begin{eqnarray}
+\int_{\Omega}|\nabla u| =\max_{p\in C_c^1(\Omega),|p|\leq 1}\int_{\Omega}\nabla u\cdot p=\max_{|p|\leq 1}\int_{\Omega}-u\nabla\cdot p
+\end{eqnarray}
+
+其中，$p:\Omega\rightarrow \mathbb{R}^2$。
+
+注：以下介绍的方法如没有特殊说明，只适用于图像去噪与图像去模糊问题。
+\section{对偶和原始对偶方法}
+为了克服直接求解TV问题的困难，许多研究致力于通过求解公式(1)的变形形式来间接求解。其中，基于对偶与原始对偶的方法在实践中取得了良好的表现，下面介绍的是几个成功的对偶和原始对偶方法。
+
+%对于下列的TV形式：
+%\begin{eqnarray*}
+%TV(u)=\int_{\Omega}|\nabla u| \ud x\ud y
+%\end{eqnarray*}
+%
+%
+%TV范数有下列的对偶公式(Fenchel 转换)：
+%%\begin{eqnarray*}
+%%TV(u)=\sup\bigg{\{}\int_{\Omega}-u\nabla\cdot p\ \ud x:p\in C_0^1(\Omega, \mathbb{R}^2),||p(x)||\leq 1\ \forall x\in \Omega\bigg{\}}
+%%\end{eqnarray*}
+%%
+%%其中$u\in L^1(\Omega)$，$div$是散度算子。那么BV空间可以被定义为：
+%%\begin{displaymath}
+%%BV(\Omega):=\Big{\{}f\in L^1(\Omega)\Big{|}\int_{\Omega}|\nabla f|<\infty\Big{\}}
+%%\end{displaymath}
+%\begin{eqnarray}
+%TV(u)=\sup\bigg{\{}\int_{\Omega}-u\nabla\cdot p\ \ud x:p\in C_0^{\infty}(\Omega),\Vert p\Vert_{\infty}\leq 1\bigg{\}}
+%\end{eqnarray}
+%其中$\nabla$为散度 $div$，$C_0^{\infty}(\Omega)$是$\Omega$上的平滑函数集，$u$属于Sobolev空间$W^{1,1}(\Omega)$.
+%
+%TV范数的对偶形式在下面的方法中起到了重要的作用。
+
+\subsection{Chan–Golub–Mulet 原始对偶方法(Chan–Golub–Mulet's Primal-Dual Method)}
+在早期的原始对偶方法研究中，Carter\cite{Carter:2001du}提出了TV去噪模型的一个Fenchel对偶公式，并研究了原始对偶的内点法，原始对偶松弛法。 Chan, Golub, 和 Mulet (CGM)在\cite{Chan:1999cg}中提出了一个原始对偶系统：由一个原始变量$u$和一个Fenchel对偶变量$p$组成的方程组。它是目前求解TV模型最有效的方法之一。
+它的过程是首先求解公式（1）的欧拉-拉格朗日方程：
+\begin{displaymath}
+K^T(Ku-f)-\lambda\nabla\cdot(\cfrac{\nabla u}{\sqrt{|\nabla u|^2+\epsilon}})=0
+\end{displaymath}
+引入一个辅助变量$p$,
+\begin{displaymath}
+p=(\cfrac{\nabla u}{\sqrt{|\nabla u|^2+\epsilon}})
+\end{displaymath}
+因此，得到
+\begin{equation}
+\begin{split}
+&p\sqrt{|\nabla u|^2+\epsilon}=\nabla u\\
+&K^T(Ku-f)-\lambda \rm div p=0
+\end{split}
+\end{equation}
+文中采用了牛顿法来求解方程组（3）。
+
+事实上，我们可以把方程（1）看做一个原始问题，它有相应的对偶问题，而这两个问题的共同的解由方程组（3）给出，也就是说通过求解方程组（3）可以求得（1）的解$u$和其对偶问题的解$p$，具体的解释如下。
+
+对TV的对偶式
+\begin{displaymath}
+\sup_{|p|\leq 1}\int_{\Omega}u\nabla\cdot p\ud x\ud y
+\end{displaymath}
+其中使
+\begin{displaymath}
+p(x)=\frac{\nabla u(x)}{|\nabla u(x)|}
+\end{displaymath}
+满足限制条件，那么对所有$x\in \Omega，\nabla u(x)\neq 0$，
+\begin{displaymath}
+p|\nabla u|-\nabla u=0
+\end{displaymath}
+这就是方程组（3）中的第二个方程。则方程（1）可以写成
+\begin{eqnarray}
+\min_u \sup_{\Vert p\Vert_{\infty}\leq1}\Phi(u,p)
+\end{eqnarray}
+\begin{displaymath}
+\Phi(u,p)=\int_{\Omega}\Big{(}-\lambda u\nabla\cdot p+\frac{1}{2}(Ku-f)^2\Big{)}\ud x \ud y
+\end{displaymath}
+根据对偶理论，我们得到（4）的解$(u^*,p^*)$
+\begin{displaymath}
+\min_u\sup_{\Vert p\Vert_\infty\leq 1}\Phi(u,p)=\Phi(u^*,p^*)=\sup_{\Vert p\Vert_\infty\leq 1}\min_u\Phi(u,p)
+\end{displaymath}
+其中，$p^*$是下列对偶问题的解
+\begin{displaymath}
+\sup_{\Vert p\Vert_\infty\leq 1}\Psi (p)
+\end{displaymath}
+\begin{displaymath}
+\Psi (p)=\min_u\Phi(u,p)
+\end{displaymath}
+
+由上式我们得出这个极小化问题必须满足下列等式
+\begin{displaymath}
+-\lambda \rm div\cdot p+K^*(Ku-f)=0
+\end{displaymath}
+
+这就是方程组（3）的第一个方程。
+
+%%与论文关系
+
+\subsection{Chambolle 对偶方法(Chambolle's Dual Method)}
+
+\subsubsection{Notation}
+ROF模型在BV空间作为一个无限维最优化问题，为了能够数值的求解它，必须离散化这个问题，这个方法首先由Rudin等在\cite{Rudin:1992ro}中提出：“最优化然后离散”，将方程离散成一个标准的有限差分格式来求解。这种方法效果很好，并且数值解能收敛于一个稳定的程度并和连续的ROF模型的收敛结果趋于一致。
+
+Chambolle算法中需要用到离散化的方法，以下是相关的注释。
+
+$X$表示欧几里得空间$\mathbb{R}^{N\times N}$，$p$是映射$p:\{1,\cdots,N\}\times\{1,\cdots,N\}\rightarrow\mathbb{R}^2$，$Y=X\times X$。
+\begin{displaymath}
+J_d(u)=\Vert\nabla u\Vert_Y=\sum_{1\leq i,j\leq N}|(\nabla u)_{i,j}|
+\end{displaymath}
+对于$p\in Y$，$u\in X$，利用对偶公式（2）我们有
+\begin{displaymath}
+J_d(u):=\max_{p\in \nu} \langle u, \rm div p\rangle
+\end{displaymath}
+其中，$\nu=\{p\in Y:|p_{i,j}|^2-1\leq 0, \forall i,j\in\{1,\cdots,N\}\}$.
+
+\subsubsection{Chambolle's algorithm}
+由Chambolle在\cite{Chambolle:2004du}中提到了一个纯对偶方法，它的ROF目标函数只写成对偶变量的形式。
+在文章中，他提出求解下列问题的对偶式（与（1）形式略有不同）
+\begin{eqnarray}
+\min_{u\in X}J_d(u)+\frac{1}{2\lambda}\Vert u-f\Vert^2_X
+\end{eqnarray}
+其中$\Vert\cdot\Vert_X$代表欧几里得范数，$f\in X$，上式可化为
+\begin{eqnarray*}
+\min_{u\in X}J_d(u)+\frac{1}{2\lambda}\Vert u-f\Vert^2_X&=&\min_{u\in X}\max_{p\in \nu}\langle u,\rm div p\rangle+\frac{1}{2\lambda}\Vert u-f \Vert^2_{X}\\
+&=&\max_{p\in \nu}\min_{u\in X}\langle u,\rm div p\rangle+\frac{1}{2\lambda}\Vert u-f\Vert^2_{X}
+\end{eqnarray*}
+显式的求解$u$的极小值，我们得到$u=f-\lambda \rm div p$，然后
+\begin{eqnarray*}
+\max_{p\in \nu}\min_{u\in X}\langle u,\rm div p\rangle+\frac{1}{2\lambda}\Vert u-f\Vert^2_{X}&=&\max_{p\in \nu}\langle f,\rm div p\rangle-\frac{\lambda}{2}\Vert \rm div p \Vert^2_X\\
+&=&-\frac{\lambda}{2}\min_{p\in \nu}(\bigg{\Vert}\rm divp-\frac{f}{\lambda}\bigg{\Vert}_X^2-\bigg{\Vert}\frac{f}{\lambda}\bigg{\Vert}_X^2)
+\end{eqnarray*}
+因此如果$p^*$是下式的解
+\begin{eqnarray}
+\min_{p\in \nu}\bigg{\Vert}\rm divp-\frac{f}{\lambda}\bigg{\Vert}_X^2
+\end{eqnarray}
+那么$u=f-\lambda \rm div p^*$是（5）式的解。从而把求原始问题（5）的解变为求其对偶式（6）的解，降低了求解难度，其具体求解（6）的过程在《Mathematical Problems in Image Processing》第三章第二节有具体的阐述。
+
+\subsection{原始对偶有效集方法(Primal-Dual Active-Set Method)}
+Hintermüller 和 Kunisch在\cite{Hintermller:2006pd}中考虑到用Fenchel对偶方法去解决一个约束二次对偶问题并且得到了一种十分有效的有效集方法来处理这种约束。这种方法把变量分为有效集合和无效集合，因此能够根据它们的性质区别对待。
+
+\subsubsection{有效和无效的概念}
+
+一个不等式约束$a^Tx\geq\beta$在点x被称作是有效的(active)如果约束满足等式$a^Tx=\beta$，一个不等式约束被称作是无效的(inactive)如果约束严格满足$a^Tx>\beta$或违反约束条件使$a^Tx<\beta$。形式为$a^Tx=\beta$的等式约束总是被认为是有效的\cite{Maes:2010pd}。
+
+PDAS的优点在于如果在最优解处的有效集和无效集的不等式约束已知并作为先验知识，可以通过解一个更简单的等式约束二次规划问题得到最终解。在算法中，有效集方法做出对有效和无效约束在最优解的预测，这种预测通常是错误的，因此需要不断地试验并且改变当前的预测以得到最终的有效和无效变量。每一次迭代中需要解一个由有效集约束定义的KKT系统，通过不断迭代当有相当数量的约束是有效的时候，整个方程系统规模已经变的很小，可以较容易求解。
+
+\subsubsection{具体过程}
+
+考虑到下列的一般性的二次问题
+\begin{displaymath}
+\min_{y,y\leq\psi }\frac{1}{2}\langle y,Ay\rangle-\langle f,y\rangle
+\end{displaymath}
+
+其中$\psi$是$\mathbb{R}^n$中的向量，其KKT条件为
+\begin{equation}
+\begin{split}
+Ay+\lambda&=f\\
+\lambda\odot(\psi-y)&=0\\
+\lambda&\geq0\\
+\psi-y&\geq0
+\end{split}
+\end{equation}
+
+$\lambda$ 是拉格朗日乘子向量，$\odot$代表分量乘积。前面提到需要对最终的有效与无效变量进行预测，这个预测是通过比较$\lambda$和$\psi-y$对0的相近度判断的。如果$\psi-y$趋近于0的速度是$\lambda$的c倍，那么这个变量被预测为有效的。
+
+将KKT系统简写成下列的式子:
+\begin{eqnarray*}
+Ay^{k+1}+\lambda^{k+1}&=&f\\
+C(y,\lambda)&=&0
+\end{eqnarray*}
+其中$C(y,\lambda)=\min(\lambda,c(\psi-y))$，$c$为任意正常数，得到目前的原始对偶对$(y,\lambda)$。
+
+PDAS算法如下:
+
+1.初始化$y^0$，$\lambda^0$， 设$k=0$。
+
+2.设$I^k=\{i:\lambda^k_i-c(\psi-y^k)_i\leq0 \}$，并且$A^k=\{i:\lambda^k_i-c(\psi-y^k)_i>0\}$。
+
+3.求解
+\begin{eqnarray*}
+Ay^{k+1}+\lambda^{k+1}&=&f\\
+y^{k+1}&=&\psi \quad on \quad A^k\\
+\lambda^{k+1}&=&0 \quad on \quad I^k
+\end{eqnarray*}
+
+4.停止，或设$k=k+1$并且返回步骤2。
+
+在\cite{Krishnan:2007nn}中，Krishnan等考虑到带边界约束的TV去模糊问题，并提出了结合cgm与pdas算法的非负约束cgm算法。其中处理图像$u$和它的对偶$p$使用的是cgm方法，而在$u$的边界约束则用pdas算法处理。结果的最优化条件被证明是半平滑的。
+
+注：除了以上三种方法以外，下面的方法只是做一简略的介绍。
+
+\subsection{原始对偶混合梯度方法(Primal-Dual Hybrid Gradient Method)}
+
+原始方法和对偶方法有各自的优点和相应的在数值方面需要克服的困难，因此Zhu和Chan在\cite{Zhu:2008pd}处提出了原始对偶混合算法(PDHG)算法，可以实现轮流在原始形式和对偶形式中转换。\\
+这种方法基于原始对偶公式：
+\begin{displaymath}
+G(u,p):=\frac{1}{2}\int_{\Omega}(Ku-f)^2\ud x+\lambda\int_{\Omega}u\rm div p\ud x\rightarrow \inf_u\sup_{|p|\leq1}
+\end{displaymath}
+
+这个公式有两个子问题：
+\begin{displaymath}
+\sup_{|p|\leq1}G(u,p) \quad \inf_u G(u,p)
+\end{displaymath}
+
+PDHG方法对每个子问题仅使用一步的梯度下降法，基本原理是当两个变量没有一个是最优的时，对每个子问题进行迭代都无法得到有用的信息，直到收敛。通过一个初始猜想$u^0$，不断重复下面的两个步骤：
+\begin{eqnarray*}
+p^{k+1}&=&p_{|p|\leq1}(p^k-\tau_k\nabla u^k)\\
+u^{k+1}&=&u^k-\theta_k(K^T(Ku^k-f)+\lambda \rm div p^{k+1})
+\end{eqnarray*}
+
+$P_{|p|\leq 1}$是到可行集${p:|p|\leq 1}$的投影，可以选择合适的步长$\tau_k$和$\theta_k$来优化结果，一些相应的步长策略在[7]中提出。
+
+在文中的结果表明这个简单的算法比Split Bregman迭代要快，也快于Chambolle的半隐式对偶算法。关于PDHG算法与其他算法的联系在文章\cite{Esser:2009pd}中有所描述。
+
+
+\subsection{半平滑牛顿法(Semi-Smooth Newton's Method)}
+
+Ng等\cite{Ng:2007ss}基于Chambolle的算法提出了一种半平滑牛顿算法。由Section3.2我们可以得到其KKT条件如下：
+\begin{eqnarray*}
+-(\nabla(\lambda \rm div \ p-g))_{i,j}+\mu_{i,j}p_{i,j}&=&0\\
+|p_{ij}|^2-1&\leq& 0\\
+\mu_{i,j}&\geq& 0\\
+\mu_{i,j}(|p_{i,j}|^2-1)&=&0
+\end{eqnarray*}
+
+我们了解到，如果约束满足$a\geq0,b\geq0$并且$ab=0$，那么它们能够统一成下列的等式约束：
+\begin{displaymath}
+\phi(a,b):=\sqrt{a^2+b^2}-a-b=0
+\end{displaymath}
+其中$\phi$被称作Fisher-Burmeister函数，因此上述的KKT系统能被写为：
+\begin{eqnarray*}
+-(\nabla(\lambda \rm div \ p-g))_{i,j}+\eta_{i,j}p_{i,j}&=&0\\
+\phi(\mu_{i,j},1-|p_{i,j}|^2)&=&0
+\end{eqnarray*}
+
+Ng等观察到这个系统是半平滑的，因此提出了使用半平滑牛顿法求解这个系统。
+在这个方法里，如果系统的雅可比矩阵由于缺乏足够的平滑度，不能定义为经典的形式，那么可以用相近点的广义的雅可比矩阵代替。如果要求解的系统至少是半平滑的，并且其收敛处的广义雅可比矩阵满足某些可逆性条件，那么这个方法的收敛是超线性的。其具体的求解过程见论文[9]。
+
+注：在Hintermuller等\cite{Hintermuller:2003pd}的论文中提到PDAS方法是一种特殊的半平滑牛顿法。
+
+\subsection{总结}
+
+以上提到的对偶或原始对偶方法，它们都满足原始对偶的相关理论，即在符合某些条件下(KKT条件)，原始最优化问题和对偶最优化问题可以取得相同的最优解，从而可以将难解的原始问题转化到相对易解的对偶问题或原始对偶问题上去。如CGM方法中将求解方程（1）准化为求解原始对偶方程组（2），Chambolle 对偶方法中将求解方程（5）转化为求解对偶式（6），PDAS方法
+将二次规划问题转化为原始对偶系统（7）等，降低了求解困难，最终实现了对全变分一般化模型的求解。
+
+\section{Bregman迭代}
+
+\subsection{原始Bregman迭代(Original Bregman Iteration)}
+
+Bregman迭代是由Osher等\cite{Osher:2005br}为实现TV去噪提出的，它也被推广以解决许多凸的逆问题。在每一步，在前一步被去除的信号又被加回来，这是为了降低ROF模型中对比度的丢失。
+
+令$f_0=f$，下列步骤不断重复：
+
+1.令
+\begin{displaymath}
+u_{j+1}=\arg_u\min\bigg{\{}\frac{1}{2}\int_{\Omega}(u-f_j)^2\ud x+\lambda\int_{\Omega}|\nabla u|\bigg{\}}
+\end{displaymath}
+\quad\ 2.令$f_{j+1}=f_j+(f-u_{j+1})$.
+
+Bregman距离被定义为
+\begin{displaymath}
+D_J^p(u,v)=J(u)-J(v)-\langle p,u-v\rangle
+\end{displaymath}
+
+$p$是$J$的次梯度的元素，在TV去噪情况下，$J(u)=\lambda\int_{\Omega}|\nabla u|$。那么Bregman迭代变为
+
+1.令
+\begin{displaymath}
+u_{j+1}=\arg_u\min\bigg{\{}\frac{1}{2}\int_{\Omega}(u-f)^2\ud x+D_J^{p_j}(u,u_j)\bigg{\}}
+\end{displaymath}
+\quad\ 2.令$f_{j+1}=f_j+(f-u_{j+1})$.
+
+ 3.令$p_{j+1}=f_{j+1}-f$.
+
+在迭代中，只要$L_2$距离比噪声分量的量级大，$u_j$和干净图像的Bregman距离是单调递减的。Bregman迭代的一个有趣的特征是，在离散的情况下，如果把$\Vert u-f\Vert^2$项换为$\Vert Au-f\Vert^2$，其中$Au=f$是欠定的，那么我们能得到下列的基追踪问题（Basis pursuit problem）:
+\begin{displaymath}
+\min_u\{J(u)|Au=f\}
+\end{displaymath}
+当$\Vert Au-f\Vert^2$用在目标中代替$\Vert u-f\Vert^2$，Bregman迭代变为
+
+1.令
+\begin{displaymath}
+u_{j+1}=\arg_u\min\bigg{\{}\frac{1}{2}\int_{\Omega}(Au-f)^2\ud x+D_J^{p_j}(u,u_j)\bigg{\}}
+\end{displaymath}
+\quad\ 2.令$f_{j+1}=f_j+(f-Au_{j+1})$.
+
+ 3.令$p_{j+1}=A^T(f_{j+1}-f)$.
+
+\subsection{分割Bregman迭代(Split Bregman Iteration)}
+
+最近，Goldstein和Osher\cite{Goldstein:2009sp}提出了分割Bregman迭代，能够有效的解决ROF问题。其主要思想是引入一个新的变量使TV极小化问题变为一个$L^1$极小化问题，以便能用Bregman迭代有效的求解。其中，将变量$q=\nabla u$引入目标函数中，然后用罚函数法求解以加强约束$q=\nabla u$。包含罚函数的目标变为
+\begin{displaymath}
+G(u,q)=\frac{\alpha}{2}\int_{\Omega}|q-\nabla u|^2\ud x+\frac{1}{2}\int_{\Omega}(u-f)^2\ud x+\lambda\int_{\Omega}|q|\ud x
+\end{displaymath}
+
+当用$y$代替$(u,q)$，那么上述的目标能被定义为
+\begin{displaymath}
+\min_y\bigg{\{}\frac{\alpha}{2}\int_{\Omega}|Ay|^2\ud x+J(y)\bigg{\}}
+\end{displaymath}
+
+其中，
+\begin{eqnarray*}
+Ay&=&q-\nabla u\\
+J(y)&=&\frac{1}{2}\int_{\Omega}(u-f)^2\ud x+\lambda\int_{\Omega}|q| \ud x
+\end{eqnarray*}
+
+当$\alpha\rightarrow\infty$，这就是基追踪问题（Basis pursuit problem），事实上，即使$\alpha$是固定有限的，当使用Bregman迭代时，它收敛于问题
+\begin{displaymath}
+\min_y\bigg{\{}J(y)|Ay=0\bigg{\}}
+\end{displaymath}
+因此约束$q=\nabla u$在收敛处满足。
+
+\section{图割法(Graph Cut Methods)}
+
+Graph Cut\cite{Chambolle:1997gr}，\cite{Darbon:2006gr}方法近来在解决各式变分问题方面有较大的发展，它能快速的解决许多实际的问题甚至得到一些非凸问题的全局最优解。由于Graph Cut问题是组合学的，目标函数不得不是离散的。因此，给定的$m\times n$的图像$f$是一个从$\mathbb{Z}_m\times\mathbb{Z}_n$到$\mathbb{Z}_k$的函数。ROF问题因此变为
+\begin{displaymath}
+F(u)=\frac{1}{2}\sum_{i=1}^m\sum_{j=1}^n(u_{i,j}-f_{i,j})^2+\lambda\Vert u\Vert_{TV}\rightarrow\min_{u:\mathbb{Z}_m\times\mathbb{Z}_n\rightarrow\mathbb{Z}_k}
+\end{displaymath}
+
+其中$\lVert u\rVert_{TV}$是离散TV形式。这个问题可以转化成下列的Graph Cut问题：
+\begin{displaymath}
+\min_{\nu^1,\nu^2,\cdots,\nu^{K-2}}\sum_{k=0}^{K-2}F^k(\nu^k)
+\end{displaymath}
+然后进一步求解，关于具体的求解过程，可以参考\cite{Chambolle:1997gr}，\cite{Darbon:2006gr}.
+
+\section{二次规划(Quadratic Programming)}
+
+离散的各向异性TV是一个分段的线性函数，Fu等在\cite{Fu:2006qp}中指出通过引入一些辅助变量，可以将TV转换成一个有着线性约束的线性函数。
+
+Fu等考虑的目标函数为
+\begin{displaymath}
+F(u)=\frac{1}{2}\Vert Ku-f\Vert^2+\lambda\sum_{i,j}|u_{i+1,j}-u_{i,j}|+|u_{i,j+1}-u_{i,j}|
+\end{displaymath}
+也可以写作
+\begin{displaymath}
+F(u)=\frac{1}{2}\Vert Ku-f\Vert^2+\lambda\Vert Ru\Vert_1
+\end{displaymath}
+其中$R$是一个$2mn\times mn$矩阵，如果使用原始各向同性TV，那就不能写做这个形式。
+
+\cite{Fu:2006qp}中采用的方法是令$\nu=Ru$然后把它分割成正的和负的部分：$\nu^+=\max(\nu,0)$，$\nu^-=\max(-\nu,0)$。目标函数可以写作
+\begin{displaymath}
+G(u,\nu^+,\nu^-)=\frac{1}{2}\Vert Ku-f\Vert^2+\lambda(1^T\nu^++1^T\nu^-)
+\end{displaymath}
+这是一个二次函数，但是添加了一些线性约束：
+\begin{eqnarray*}
+Ru&=&\nu^+-\nu^-\\
+\nu^+,-\nu^-&\geq& 0
+\end{eqnarray*}
+
+现在，可以用标准原始对偶内点法来求解这个问题。这里的对偶指的是线性约束的拉格朗日乘数。
+
+\section{二阶锥规划(Second-Order Cone Programming)}
+
+Goldfarb 和 Yin在\cite{Goldfarb:2005so}中提出了可以用于各向同性TV形式的二阶锥规划(SOCP)方法，他们考虑的是下述的ROF问题：
+\begin{displaymath}
+\min_u\Vert u\Vert_{TV}\quad subject\, to\,\,\Vert u-f\Vert\leq \sigma
+\end{displaymath}
+其中$\sigma$是假设已知的噪声的标准差。
+
+让$w_{i,j}^x=u_{i+1,j}-u_{i,j}$，$w_{i,j}^y=u_{i,j+1}-u_{i,j}$，TV变为
+\begin{displaymath}
+\sum_{i,j}\sqrt{(w_{i,j}^x)^2+(w_{i,j}^y)^2}
+\end{displaymath}
+引入变量$\nu=f-u$，$t$，和约束
+\begin{displaymath}
+(w_{i,j}^x)^2+(w_{i,j}^y)^2\leq t _{i,j}^2
+\end{displaymath}
+则TV最小化问题变为
+\begin{eqnarray*}
+\min\sum_{i,j}t_{i,j}\\
+s.t.\quad u+\nu&=&f\\
+w_{i,j}^x&=&u_{i+1.j}-u_{i,j}\\
+w_{i,j}^y&=&u_{i.j+1}-u_{i,j}\\
+(\sigma,\nu)&\in &cone^{mn+1}\\
+(t_{i,j},w_{i,j}^x,w_{i,j}^y)&\in& cone^3
+\end{eqnarray*}
+这里$cone^n$是$\mathbb{R}^n$的二阶锥：
+\begin{displaymath}
+\{x\in \mathbb{R}^n:\Vert (x_2,x_3,\cdots,x_n)\Vert\leq x_1\}
+\end{displaymath}
+最优解满足
+\begin{displaymath}
+t_{i,j}^2=(w_{i,j}^x)^2+(w_{i,j}^y)^2
+\end{displaymath}
+因此
+\begin{displaymath}
+\sum_{i,j}t_{i,j}=\sum_{i,j}\sqrt{(w_{i,j}^x)^2+(w_{i,j}^y)^2}=\Vert u\Vert_{TV}
+\end{displaymath}
+
+SOCP方法可以用内点法求解，但Goldfarb 和 Yin提出了一个域分解方法，通过将规模较大的规划问题分解成几个子问题来有效求解。
+
+\section{优化最小化(Majorization-Minimization)}
+
+Majorization-Minimization(MM)方法是求解最优化的一种方法，它的主要思想是在方法的每一步，用一个简单的函数（叫做代理函数）将目标函数代替，这样它的最小化问题便易于求解，最终结果给出原始问题的一个较小的目标值。
+在很多情况下，甚至能将多维问题转化成一系列一维问题。
+最近，一些作者\cite{Bioucas-Dias:2006mm}应用这种方法求解去模糊问题。求解MM方法通常采用预处理共轭梯度法，以及余弦变换，多重网格法等。其具体解释求解过程参考\cite{Bioucas-Dias:2006mm}。
+
+\section{分裂法(Splitting Methods)}
+
+分裂法也是一种可以求解TV去模糊问题的方法，它的思想是将原始问题分离成去模糊过程和TV正则化过程再分开求解。
+分裂法一般基于下列形式的目标函数
+\begin{displaymath}
+F(u)=J_1(u)+J_2(Au)
+\end{displaymath}
+$A$为线性算子，$J_1$和$J_2$的最小化是分开进行的。对下列的离散ROF模型：
+\begin{displaymath}
+F(u)=\frac{1}{2}\Vert Ku-f\Vert^2+\lambda\Vert |\nabla u|\Vert_1
+\end{displaymath}
+Huang\cite{Huang:2008sm}，Bresson和Chan\cite{Bresson:2008sm}考虑到下列的分裂
+\begin{displaymath}
+G(u,v)=\frac{1}{2}\Vert Ku-f\Vert^2+\frac{\alpha}{2}\Vert u-\nu\Vert^2+\lambda\Vert |\nabla u|\Vert_1
+\end{displaymath}
+最小化$u$可得
+\begin{displaymath}
+(K^TK+\alpha I)u=K^Tf+\alpha\nu
+\end{displaymath}
+
+这个式子可以用快速傅里叶变换求解，只要模糊矩阵$K$能被对角化成一个快速转换矩阵。最小化$\nu$是一个ROF去噪问题，可以用上面提到的去噪方法求解，\cite{Huang:2008sm}，\cite{Bresson:2008sm}使用的是Chambolle对偶算法。TV去噪问题比去模糊问题更容易求解，一些基于Graph cut的方法不能直接应用于去模糊问题，但是通过分裂方法，我们可以应用Graph cut方法求解去噪问题。分裂法通常速度较快，并且可以应用于其他图像处理问题如图像分割等。
+
+\section{$L^1$ Fitting}
+
+正如前面提到的，ROF模型的一个缺点是对比度的丢失。一个简单的修正ROF模型以补偿对比度丢失的方法是将变分公式中保真项的$L^2$范数替换为$L^1$范数。
+\begin{eqnarray}
+\int_{\Omega}|\nabla u|+\lambda\int_{\Omega}|u-f|\ud x
+\end{eqnarray}
+
+Alliney\cite{Alliney:1997l1}研究了公式（8）处理一维信号的离散形式，Nikolova\cite{Nikolova:2002l1}研究了高维形式。已经证明在处理某些特殊形式的噪声（脉冲噪声）如椒盐噪声时，这种方法要比标准ROF形式更加高效。Chan和Esedoglu在\cite{Chan:2004l1}中研究了连续形式的解。
+
+（8）具有对比度不变性：如果f(x)是给定的图像，u(x)是（6）的解，那么如果cf(x)是给定的图像，cu(x)是（6）的解。
+
+除了有更好的对比度保持性能，模型（6）被证明对处理"形状(shapes)"的去噪问题有较好的效果。
+
+\section{TV在图像盲复原、图像修复、图像分割中的应用}
+
+除了上述所说TV在图像去噪，图像去模糊方面的应用，TV还应用于图像盲复原、图像修复的研究。其中，Chan与Wong在\cite{Chan:1998tv}提出了下列TV盲复原模型
+\begin{displaymath}
+\min_{u,k\in BV}\Vert k*u-f\Vert_2^2+\lambda_u\Vert u\Vert_{TV}+\lambda_k\Vert k\Vert_{TV}
+\end{displaymath}
+
+其中$f$是观察到的图像，$k$是点扩散函数（point spread function），$u$是干净的图像，$*$代表卷积算子。
+
+Masnou 和 Morel\cite{Masnou:1998in}，Bertalmio等\cite{Bertalmi:2000in}，Chan and Shen\cite{Chan:2001in}提出了一些图像修补方法与模型。
+
+TV极小化问题也应用于图像分割问题，Chan和Vese\cite{Chan:2001se}提出了一个基于水平集的方法结合Mumford–Shah模型的方法来求解分割问题，Chan等\cite{Chan:2006se}，Krishnan在\cite{Krishnan:2009se}中考虑了离散的二相Mumford–Shah模型来求解。
+
+此外，全变分还成功应用在图像缩放，颜色加强，图像融合，图像分解等方面。在《Level Set and PDE Based Reconstruction Methods in Imaging》一书中由Martin Burger 和 Stanley Osher撰写的《A Guide to the TV Zoo》一节中有详细的说明\cite{Burger:2013tv}。
+\newline
+
+注：本文档主要参考了《Handbook of Mathematical Methods in Imaging》\cite{Scherzer:2011im}23、24章的内容。
+
+%\section{关于全变分文章的一些补充}
+%\noindent2010\\
+%Chan T, Esedoglu S, Park F-A Fourth Order Dual Method for Staircase Reduction in Texture Extraction and Image Restoration Problems.\\
+%在这篇文章里，作者提出了一个称作$CEP2-L^2$的阶梯降低图像去噪模型，并提出了一个四阶对偶方法来求解它。\\
+%Chan T, Shen J, and Zhou H-Total variation wavelet inpainting(2006).\\
+%Zhang  X, Chan T-Wavelet inpainting by nonlocal total variation.\\
+%在前一篇文章中，Chan, Shen, and Zhou通过结合全变分正则化与小波表征提出了一个有效的方法来恢复分段常数或平滑图像；后一篇作者把它延伸到非局部全变分正则化以同时恢复纹理与局部几何结构。\\
+%2013\\
+%Osher-A Guide to the TV Zoo\\
+%对于全变分的各个方面的总结。
+
+\bibliographystyle{plain}
+\bibliography{总结}
+
+\end{document}
