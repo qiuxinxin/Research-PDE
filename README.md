@@ -1,4 +1,4 @@
-Reseach-PDE
+Research-PDE
 ===========
 
-Some document and materials of my research
+Some documents and materials of my research
