@@ -1,0 +1,295 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage{amsfonts}
+\usepackage{iplouccfg}
+\usepackage{zhfontcfg}
+\usepackage{iplouclistings}
+\usepackage{amsmath}
+\usepackage{exscale}
+\usepackage{relsize}
+\usepackage{subfigure}
+
+\title{图像去噪与偏微分方程}
+\author{邱欣欣}
+\date{2014年10月11日}
+
+\begin{document}
+
+\maketitle
+
+\section{引言}
+
+现实中的数字图像在数字化和传输过程中常受到成像设备与外部环境噪声干扰等影响，称为含噪图像或噪声图像。减少数字图像中噪声的过程称为图像去噪。图像去噪是图像处理的一个重要任务，也是一些其他图像处理过程中必不可少的一步。
+
+在图像处理的多种方法中，偏微分方程的应用具有重要的意义。它在两个方面有重要的应用：一方面，许多变分问题或他们的正则化逼近通常可以通过它们的欧拉拉格朗日方程有效的求解；另一方面，偏微分方程作为重要的数学工具，可以方便的用来描述、建模、模拟许多动态平衡现象等等。
+
+这篇文章主要内容如下：介绍几种基于偏微分方程的图像去噪方法，各种方法去噪效果的评价指标，及目前去噪方法存在的问题。
+
+\section{基于偏微分方程的图像去噪方法概述}
+文档中，原始图像$u$定义在一个有界区域$\Omega\in \mathbb{R}^2$，并且由$u(x)$表示，其中$x=(x,y)\in \mathbb{R}^2$。不同于通过求解极小化问题方程的欧拉拉格朗日方程的能量法求解，现在考虑的是一些经典的基于PDE的方法，以年代为顺序。这些模型一般写作下列形式：
+\begin{displaymath}
+\left\{\begin{array}{lll}
+\cfrac{\partial u}{\partial t}(t,x)+F(x,u(t,x),\nabla u(t,x),\nabla^2 u(t,x))=0 \;\mathrm{in}\;(0,T)\times\Omega\\
+\cfrac{\partial u}{\partial N}(t,x)=0 \;\mathrm{on}\;(0,T)\times{\partial \Omega}\\
+u(0,x)=u_0(x)
+\end{array} \right.
+\end{displaymath}
+其中初始的退化图像设为$u_0(x)$，$u$是要恢复的图像，从初始图像开始，通过对上述的方程组进行迭代，我们得到了一系列重构图像$u(t,x)(t>0)$，随着时间$t$的增长，得到了最终重构的图像。而$F$的选择十分重要，它的不同导致了各种方法的不同。 我们对$F$有两个方面的要求：$u(t,x)$是$u_0(x)$的平滑版本，噪声得到了去除；去噪的同时能够保留一些特征如边界，角点等。
+
+\subsection{各向同性滤波-热力学方程}
+抛物线线性热力学方程是最古老和最早应用于图像处理的方程\cite{ter1994geometry}\cite{koenderink1984structure}，\begin{displaymath}
+\left\{\begin{array}{ll}
+\cfrac{\partial u}{\partial t}(t,x)-\Delta u(t,x)=0, t\geq 0, x\in R^2\\
+u(0,x)=u_0(x)
+\end{array}\right.
+\end{displaymath}
+
+解上列方程等于对图像执行一个高斯滤波，它的显式解为
+\begin{displaymath}
+u(t,x)=\int_{R^2}G_{\sqrt{2t}}(x-y)u_0(y)\mathrm{d}y=(G_{\sqrt{2t}}*u_0)(x)
+\end{displaymath}
+其中$G_{\sigma}(x)$表示一个二维的高斯核$$G_{\sigma}(x)=\cfrac{1}{2\pi\sigma^2}\exp{\bigg{(}-\cfrac{|x|^2}{2\sigma^2}\bigg{)}}$$
+
+我们可以看到，这个平滑是各向同性的，它不依据于图像，在各个方向都是相同的，因此边缘不能够很好的保持，这也是它的主要缺点。
+
+\subsection{PM模型及其改进}
+不同于各向同性滤波，各向异性滤波通过仅在垂直于$Du(x)$方向对$u$卷积来避免高斯滤波的模糊效应。其中这种滤波方法可以追溯到Perona和Malik提出的模型\cite{perona1990scale}及Gabor提到的理论\cite{lindenbaum1994gabor}。
+
+\subsubsection{各向异性滤波-PM模型}
+首先我们先考虑下列由Perona和Malik提出的方程：
+\begin{displaymath}
+\left\{\begin{array}{lll}
+\cfrac{\partial u}{\partial t}=\mathrm{div}(c(|\nabla u|^2)\nabla u) \; \mathrm{in}\; \Omega\times(0,T),\\
+\cfrac{\partial u}{\partial N}=0\; \mathrm{on}\; \partial{\Omega}\times(0,T),\\
+u(0,x)=u_0(x) \; \mathrm{in}\; \Omega
+\end{array}\right.
+\end{displaymath}
+
+当$c\equiv1$， 上式即为热力方程。 现在假设$c(s)$是一个函数满足$c(0)=1$，$\lim_{s\rightarrow\infty}c(s)=0$。在这种情况下，在平滑区域内$u$的梯度较弱的情况下，方程表现的像是热力方程，导致各向平滑；在区域边缘附近梯度较大，正则化停止此时边缘得到了保留。
+
+但PM模型是一个病态的模型，需要针对它进行一些改进。下面是几种基于PM模型进行的改进方法。
+
+\subsubsection{Weickert方法\cite{weickert1998anisotropic}}
+首先考虑矩阵
+\begin{displaymath}
+\nabla u\nabla u^t=
+\begin{pmatrix}
+u_{x_1}^2 & u_{x_1}u_{x_2}\\
+u_{x_1}u_{x_2} & u_{x_2}^2
+\end{pmatrix}
+\end{displaymath}
+
+它是半正定的，特征值$\lambda_1=|\nabla u|^2$，$\lambda_2=0$，并且存在一个标准正交基其特征向量$v_1$，$v_2$平行于$\nabla u$。
+图像$u(x)$由一个高斯核$k_{\sigma}$卷积：$u_{\sigma}(x)=(k_{\sigma}\ast u)(x)$。局部信息是由高斯核$k_{\rho}$得到的卷积分量$\nabla u_{\sigma}\nabla u_{\sigma}^t$的平均。由此得到以下的对称半正定矩阵
+\begin{displaymath}
+J_{\rho}(\nabla u_{\sigma})=k_{\rho}\ast\nabla u_{\sigma}\nabla u_{\sigma}^t
+\end{displaymath}
+
+我们可以得到以下的方程，可以把它看作PM方程的扩展
+\begin{displaymath}
+\left\{\begin{array}{lll}
+\cfrac{\partial u}{\partial t}=\mathrm{div}(D(J_{\rho}(\nabla u_{\rho})\nabla u) \; \mathrm{in}\; \Omega\times(0,T),\\
+u(0,x)=u_0(x) \; \mathrm{on}\; \Omega\\
+\langle D(J_{\rho}(\nabla u_{\rho}))\nabla u, N\rangle=0 \;\mathrm{on}\; \Omega\times(0,T)
+\end{array}\right.
+\end{displaymath}
+
+其中$D$是扩散张量，$N$是垂直于$\partial \Omega$的单位外法线。
+
+由于$D$的特征向量能够反映局部图像结构，$D$的特征向量$\lambda_1$和$\lambda_2$的选择依据下列两个选择目标：
+\begin{itemize}
+\item 边缘增强各向异性扩散
+
+如果想要在区域内得到较好的平滑效果并试图保留边缘，那么应该降低垂直于边缘的扩散率$\lambda_1$，可以用下列式子表示
+\begin{eqnarray*}
+\lambda_1&=&\left\{\begin{array}{ll}
+1 & \mathrm{if} \;\mu_1=0\\
+1-\exp\Big{(}\frac{-3.315}{\mu_1^4}\Big{)} & \mathrm{otherwise}
+\end{array}\right.\\
+\lambda_2&=&1
+\end{eqnarray*}
+
+\item 相干增强各向异性扩散
+
+如果想要增强图像流量状的结构和有断点的线条，可以使扩散率为$\lambda_2$，沿着相干方向$v_2$进行平滑。则$D(J_{\rho})$的特征向量可选择为
+\begin{eqnarray*}
+\lambda_1&=&\alpha\\
+\lambda_2&=&\left\{\begin{array}{ll}
+\alpha & \mathrm{if} \;\mu_1=\mu_2\\
+\alpha+(1-\alpha)\exp\Big{(}\frac{-1}{(\mu_1-\mu_2)^2}\Big{)} & \mathrm{otherwise}
+\end{array}\right.
+\end{eqnarray*}
+
+\end{itemize}
+
+\subsubsection{Catte方法}
+对于二维的PM模型来说，求解这个病态问题的一个方法是引入正则化项，然后通过降低正则化的数量并且观察正则化问题的解，可以得到关于初始问题的有用信息。这就是Catte等\cite{catte1992image}采用的方法。具体方法是将扩散系数$c(|\nabla u|^2)$中的图像梯度$\nabla u$代替为一个较平滑的式子$G_{\rho}\ast \nabla u$，其中$G_{\rho}$是一个平滑核，例如高斯核。Catte等提出了下列的正则化模型
+\begin{displaymath}
+\left\{
+\begin{array}{ll}
+\cfrac{\partial u}{\partial t}(t,x)=\mathrm{div}(c(|(\nabla G_{\rho}\ast u)(t,x)|^2)\nabla u(t,x))\\
+u(0,x)=u_0(x)
+\end{array}\right.
+\end{displaymath}
+
+这个模型至少有两点优于Perona和Malik模型：
+\begin{itemize}
+\item 如果初始数据噪声很大，Perona和Malik模型不能分辨出``真实''边界与噪声引起的``虚假''的边界之间的区别。而提出的模型避免了这个缺点，因为现在方程只在梯度估计值较小时扩散。事实上，模型使滤波器对在时间$t\sigma$的噪声不敏感。
+\item 方程现在是适定的。
+\end{itemize}
+
+\subsubsection{Nitzberg–Shiota方法}
+其他对Perona和Malik模型的改进有Nitzberg-Shiota\cite{nitzberg1992nonlinear}提出的下列式子
+\begin{displaymath}
+\left\{
+\begin{array}{lll}
+\cfrac{\partial u}{\partial t}=(c(v)u_x)_x\\
+\cfrac{\partial v}{\partial t}=\cfrac{1}{\tau}(|u_x|^2-v)\\
+u(0,x)=u_0(x) 
+\end{array}\right.
+\end{displaymath}
+
+其中$v(0,x)$是$|(u_0)_x(x)|^2$的平滑版本，它起着时间延迟正则化的作用，参数$\tau>0$决定着延迟。
+
+另外还有其他方法，如Barenblatt等\cite{barenblatt1993degenerate}，Chipot等\cite{chipot1997analysis}，Alvarez等\cite{alvarez1992image}提出的模型用于图像去噪。
+
+\subsection{Osher和Rudin冲击滤波}
+某些非线性双曲线滤波（冲击滤波）能用来进行边缘增强与图像去模糊。
+理想情况下，边缘能够定义为下列的模型
+\begin{displaymath}
+u(x)=\left\{
+\begin{array}{ll}
+1& \mathrm{if} \; x>0\\
+-1& \mathrm{if} \; x<0
+\end{array}\right.
+\end{displaymath}
+
+如果进行了某种处理（如卷积），模糊了边界，设此时边缘为$u_0(x)$，我们的目标是从$u_0(x)$恢复成$u(x)$。经过观察我们得到$u(t,x)$是$x$的函数并且依据于$u_x(t,x)u_{xx}(t,x)$的乘积的符号。当$u_x(t,x)=0$或$u_{xx}(t,x)=0$时，边界没有移动发生。
+由此Osher和Rudin\cite{osher1990feature}提出了下列方程组：
+\begin{displaymath}
+\left\{
+\begin{array}{ll}
+u_t(t,x)=-|u_x(t,x)|\mathrm{sign}(u_{xx}(t,x))\\
+u(0,x)=u_0(x)
+\end{array}\right.
+\end{displaymath}
+
+其中如果$u>0$，$sign(u)=1$，$u<0$，$sign(u)=0$。因此当方程在点$u_x(t,x)>0$，$u_{xx}(t,x)>0$时，我们能够得知上式变为$u_t(t,x)+u_x(t,x)=0$，即迁移方程，它可以得到想要的移动，最终成功恢复$u(x)$。
+
+\subsection{邻域滤波与PDE}
+上述滤波是基于空间邻域的概念，而邻域滤波通过考虑灰度值来定义邻域像素。在最简单并且最极端的情况下，在像素$i$处的去噪值是与$u(i)$的灰度值相近的像素点值的平均值。灰度邻域写作：
+\begin{displaymath}
+B(i,h)=\{j\in I|u(i)-h<u(j)<u(i)+h\}
+\end{displaymath}
+
+这个算法能写作一个更连续的形式
+\begin{displaymath}
+NF_hu(x)=\frac{1}{C(x)}\int_{\Omega}u(y)e^{-\frac{|u(y)-u(x)|^2}{h^2}}\mathrm{d}y
+\end{displaymath}
+
+其中$\Omega\in \mathbb{R}^2$是一个开的有界域，并且$C(x)=\int_{\Omega}e^{-\frac{|u(y)-u(x)|^2}{h^2}}\mathrm{d}y$是正则化因子。
+
+关于邻域的概念理解较为广泛，可以理解为邻近的像素，邻近或相似的强度，邻近的区域等。每一个概念都对应着一个特定的滤波器，这些滤波器与许多已知的PDEs如热力方程，PM方程都有一定的联系，在Buades等\cite{buades2006neighborhood}的文章中又相应的描述。
+邻域滤波概念的形成可以追溯到Yaroslavsky的文章\cite{yaroslavsky1985digital}，Smith等人\cite{smith1997susan}，Tomasi等人\cite{tomasi1998bilateral}，Buades等\cite{buades2006neighborhood}指出了这些模型与PDE方程间的联系。下面简要介绍一下Yaroslavsky滤波。
+
+Yaroslavsky邻域滤波是邻域滤波方法中的一种，它考虑到混合邻域$B(i,h)\cap B_\rho(i)$，其中$B_\rho(i)$是一个中心在$i$半径为$\rho$的球体。因此这个方法可以取在灰度和空间距离同时都很近的像素点的值的平均值，滤波器写作下列形式：
+\begin{displaymath}
+YNF_h,\rho(x)=\frac{1}{C(x)}\int_{B_\rho(x)}u(y)e^{-\frac{|u(y)-u(x)|^2}{h^2}}\mathrm{d}y
+\end{displaymath}
+
+其中$C(x)=\int_{B_\rho(x)}e^{-\frac{|u(y)-u(x)|^2}{h^2}}\mathrm{d}y$
+是正则化因子。
+
+SUSAN滤波也有和Yaroslavsky滤波有相似的行为。在平坦区域，因为噪声的存在灰度值波动很小，而在明暗区域急剧变化的边界处，滤波器计算属于相同区域的像素的均值作为参考像素：边缘不会被模糊。
+
+PM模型和Yaroslavsky滤波在处理图像时均可能产生阶梯效应问题，需要采取一定的优化措施。
+
+\subsection{非局部平均（NL-Means）算法}
+NL-Means算法是由Buades等\cite{buades2004image}提出的，它利用了自然图像高度的冗余度，是近些年得到广泛发展的算法。设$v$是定义在开集$\Omega\in\mathbb{R}^2$上的噪声图像，并且让$x\in\Omega$。NL-Means算法估计$x$的值为所有与$x$的邻域相似的高斯邻域像素点的值的平均值。其中在两个像素点$x$和$y$的相似度是由$N_x$和$N_y$间的灰度强度的相似度决定的。这个相似度是由一个高斯距离计算的：
+\begin{displaymath}
+|u(N_x)-u(N_y)|^2=\int_{R^2}	G_a(t)(u(x+t)-u(y+t))^2\mathrm{d}t
+\end{displaymath}
+其中$G_a$是一个有着标准差$a$的高斯核，
+\begin{displaymath}
+|u(N_x)-u(N_y)|^2=(	G_a(t)\ast(u(x+.)-u(y+.))^2(0)
+\end{displaymath}
+
+因此$u$的非局部均值滤波定义为
+\begin{displaymath}
+NL(v)(x)=\frac{1}{C(x)}\int_{\Omega}e^{-\frac{(G_a\ast|v(x+.)-v(y+.)|^2)(0)}{h^2}}v(y)\mathrm{d}y
+\end{displaymath}
+$h$为滤波参数，$C(X)=\int_\Omega e^{-\frac{(G_a\ast|v(x+.)-v(z+.)|^2)(0)}{h^2}}\mathrm{d}z$是正则化系数。
+
+邻域的大小是由参数$a$控制的而平均的数量是由参数$h$控制的。在极端的情况下，如果窗口降低为一个像素$（a\rightarrow0）$，就是Yaroslavsky滤波。
+
+NL-Means算法尤其适合于处理具有周期性质和具有纹理的图片。
+经验实验结果显示，灰度图片采用$7\times7$或$9\times9$的窗口，噪声较小的彩色图像采用$5\times5$甚至$3\times3$的窗口就能得到较好的效果。
+
+\cite{zimmer2008rotationally}提出旋转不变量块匹配策略来提高NL-Means算法；\cite{ebrahimi2008examining}在NL-Means算法中使用了交叉尺度邻域法。关于NL-Means算法计算方法方面，一些文章提出了快速并且能够线性化实现的算法，如块预选\cite{bilcu2008combined}，高斯KD-树对图像块进行分类\cite{adams2009gaussian}，SVD\cite{orchard2008efficient}，使用FFT来计算块间的相关度\cite{wang2006fast}等等。
+
+\subsection{ROF全变分}
+全变分极小化首先由Rudin，Osher与Fatemi\cite{rudin1992nonlinear}提出，它在图像去噪领域得到了很广泛的发展。其中全变分所在的函数空间是$BV(\Omega)$空间，这是一个可积分的空间，其全变分为$TV_{\Omega}(u)=\int|Du|$。设噪声图像为$u_0(x)$，那么恢复图像$u(x)$转化为下列的极小化问题：
+\begin{displaymath}
+\min_uTV_{\Omega}(u)+\lambda\int_{\Omega}|u_0(x)-u(x)|^2\mathrm{d}x
+\end{displaymath}
+
+上述函数是严格凸的并且下半连续的，因此极小值存在并且是唯一的。\\
+
+\emph{上述介绍的只是几种经典的方法，在这些方法上的进一步的改进延伸及最新的有效方法将会在后面不断补充。}
+
+\subsection{评价方法}
+在Buades等人的文章\cite{buades2010image}定义了四个明确的准则来比较不同的算法，其中每个准则衡量了去噪方法的一个方面。
+\begin{itemize}
+\item 方法噪声（method noise）
+\item 噪声-噪声（noise-to-noise）
+\item 均方差 （mean square error）
+\item 视觉质量（visual quality）
+\end{itemize}
+
+\subsubsection{方法噪声}
+所有去噪方法依据于一个滤波参数$h$，大多数方法中参数$h$依据于噪声方差$\sigma^2$的估计值。我们能够把去噪方法$D_h$的结果定义为图像$v$的分解：$v=D_hv+n(D_h,v)$，其中$D_hv$是经过去噪得到的最终图像。
+\theoremstyle{plain}
+\newtheorem{definition}{定义}
+\begin{definition}{方法噪声}
+设$u$为图像，$D_h$是一个依据于$h$的去噪运算符。我们定义$u$的方法噪声为
+\begin{displaymath}
+n(D_h,u)=u-D_h(u)
+\end{displaymath}
+\end{definition}
+
+这个方法噪声应该尽可能的相似于白噪声。同时，我们想要原始图像不要被去噪方法改变，因此方法噪声应尽可能小。如果一个去噪方法表现的较好，方法噪声必须看起来像是一个噪声即使是处理非噪声图片。这是因为好的质量的图片也会含有噪声，用这种方式去评价去噪方法是有意义的\cite{buades2005non}，即使没有传统的加噪声然后去除过程。
+
+\subsubsection{Noise-to-noise}
+Noise-to-noise准则\cite{buades2008nonlocal}要求一个去噪算法将噪声图像的白噪声转化成白噪声。这看起来是与我们的要求相矛盾的：噪声是我们想要完全去除的。然而完全去除噪声是不可能的，问题是剩下的噪声看起来像什么。因为把白噪声转化成任何相关的信号都会产生额外的结构与改变，而白噪声本身是不会有结构的，这点由Attneave\cite{attneave1954some}指出。
+
+因此要求：一个去噪算法将白噪声图像去噪后，得到的图像仍然是白噪声图像。
+\subsubsection{视觉质量}
+复原图像的视觉质量是另一个判断去噪算法的表现的重要准则，这也是一种比较直观的判断方法。
+
+\subsubsection{其他}
+均方差也是一种评测方法，它是原始图像与其估计值之间的欧几里得距离的平方。这种数值质量测量更加客观，因为它不依据于任何视觉评测。但是，一个小的均方差不意味着能得到好的视觉质量。设两个大小$m\times n$的图像$u$和$u_0$，均方差定义为
+\begin{displaymath}
+MSE=\frac{1}{mn}\sum_{i=0}^{m-1}\sum_{j=0}^{n-1}\|u(i,j)-u_0(i,j)\|^2
+\end{displaymath}
+均方差越小，估计值越接近于原始图像。
+
+此外图像质量的客观评价方法还有峰值信噪比，
+\begin{displaymath}
+PSNR=10\log_{10}\bigg(\frac{(2^n-1)^2}{MSE}\bigg)
+\end{displaymath}
+
+如果每个采样点数用8位表示，则n=8。峰值信噪比越大，效果越好。但PSNR结果可能和人眼看到的视觉质量不能一致，可能PSNR 较高者看起来反而比 PSNR 较低者差。这是因为人眼的视觉对于误差的敏感度并不是绝对的，其感知结果会受到许多因素的影响而产生变化。
+
+\section{现有方法的缺点}
+目前去噪算法是基于以下两点：
+\begin{itemize}
+\item 一个噪声模型
+\item 一个一般性的图像平滑模型，局部或全局的
+\end{itemize}
+在实际试验中，噪声是已知的，因此算法的弱点是图像模型的不充分性。
+所有表现良好的方法均是当图像模型与算法相符合时，能得到很好的效果，但却无法处理更一般性的问题。而且由于去噪算法不能分辨小的细节与噪声的区别，可能会去除掉图像中精细的结构成分；而且在很多情况下，一些方法会造成额外的现象如模糊，阶梯效应等。因此尽管已经有大量的图像去噪方法提出，提出的算法也有高的复杂度，但大多数算法都没有达到令人满意的适用性水平。因此利用偏微分方程进行图像去噪算法仍然需要进一步提高。
+
+\bibliographystyle{plain}
+\bibliography{图像去噪与偏微分方程}
+
+
+\end{document}
